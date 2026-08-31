@@ -14,6 +14,9 @@ This repository contains the QRT ENS electricity price challenge materials, data
 - `docs/challenge.md`: Markdown version of the original challenge PDF
 - `notebooks/benchmark_qrt_en.ipynb`: benchmark notebook updated to use the local folder structure
 - `notebooks/eda.ipynb`: exploratory data analysis — structure, target, missingness, feature/target association, and CV baselines
+- `notebooks/data_prep.ipynb`: builds model-ready artifacts from the EDA findings
+- `src/qrt_prep.py`: shared loading, validation, fold-safe transforms, CV harness and scoring
+- `data/processed/`: `train.parquet`, `test.parquet`, `manifest.json`
 - `data/raw/X_train.csv`: training input data
 - `data/raw/y_train.csv`: training target data
 - `data/raw/X_test_final.csv`: test input data
@@ -48,3 +51,27 @@ Main findings:
 - Everything that added capacity lost: FR−DE spreads, seasonal terms, gradient boosting, volatility scaling.
 
 Run with the project venv (`uv sync`), selecting the `.venv` kernel in your editor.
+
+## Data prep
+
+`notebooks/data_prep.ipynb` turns the raw CSVs into `data/processed/`, encoding the EDA findings. Design
+rule: anything *fitted* must be fittable inside a CV fold, so the saved data keeps its NaNs and the
+transforms live in `src/qrt_prep.py` rather than being baked in.
+
+```python
+import sys; sys.path.insert(0, "src")
+import qrt_prep as P
+
+train, test, manifest = P.load_processed()
+P.validate(train, test)                       # re-asserts every EDA invariant
+folds = P.make_folds(train.DAY_ID, seed=0)    # grouped on DAY_ID, randomised
+mean, sd, oof = P.cross_validate(train, fit_predict)
+```
+
+Settled by measurement, not convention: fold-median imputation (all options within noise),
+rank-transformed target (+0.04, the main win), and permutation-null feature selection applied
+**inside the fold**.
+
+That last point corrects the EDA: selecting France's features once on the full training set inflated
+its CV estimate by ~0.008. Honest reference is **0.2806 ± 0.0066** pooled OOF Spearman, not 0.2896.
+The model itself was fine — only the self-assessment was contaminated.
