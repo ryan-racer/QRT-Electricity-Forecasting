@@ -124,3 +124,44 @@ def audit_ordering(train, test, feature_cols):
             "shuffled": fr[c].sample(frac=1, random_state=0).reset_index(drop=True).autocorr(1),
         })
     return pd.DataFrame(rows).sort_values("by_ID", ascending=False)
+
+
+COMMODITY = ["GAS_RET", "COAL_RET", "CARBON_RET"]
+
+
+def add_cumulative_returns(train, test, cols=None, windows=(5, 20)):
+    """Trailing SUMS of the commodity return columns, along the recovered ordering.
+
+    GAS_RET / COAL_RET / CARBON_RET are daily *returns*, so a trailing sum reconstructs
+    the cumulative move in the underlying price level. That matters for France: it is
+    nuclear-heavy, so its price is set by the marginal thermal unit's fuel cost -- a level,
+    not a daily change. Differencing helps Germany (residual load) and does nothing for
+    France, because returns are already differenced and have ~0 autocorrelation.
+
+    Effect is large and France-specific: FR within-country 0.233 -> 0.280, pooled
+    0.5216 -> 0.5405 (paired +0.019, 12/12). CARBON_RET_cum5 reaches |rho| = 0.237 with the
+    FR target, the strongest single French feature found. The same columns are near-useless
+    for Germany (best |rho| 0.042).
+
+    The window includes the current day: this is a contemporaneous explanation problem, and
+    today's commodity move is legitimately known.
+    """
+    cols = cols or COMMODITY
+    both = pd.concat([train.drop(columns=[c for c in ["TARGET"] if c in train]), test],
+                     ignore_index=True)
+    both["_t"] = day_index(both)
+
+    pieces = []
+    for country in ("FR", "DE"):
+        s = both[both.COUNTRY == country].sort_values("_t").copy()
+        for col in cols:
+            for w in windows:
+                s[f"{col}_cum{w}"] = s[col].rolling(w, min_periods=2).sum()
+        pieces.append(s)
+
+    derived = pd.concat(pieces, ignore_index=True)
+    new_cols = [c for c in derived.columns if c not in both.columns]
+    keep = ["ID"] + new_cols
+    return (train.merge(derived[keep], on="ID", how="left"),
+            test.merge(derived[keep], on="ID", how="left"),
+            new_cols)
