@@ -1,5 +1,14 @@
 # Model zoo: what beats, ties, or usefully diversifies from the ridge baseline
 
+> **SUPERSEDED for modelling decisions -- see `notes/model_zoo_time.md`.**
+> Everything below was measured on the 29 base features, where ridge scores 0.2909. The
+> `DAY_ID`-decoy finding (`src/qrt_timeorder.py`) moved the baseline to ~0.52, and under
+> those features the central conclusion here **inverts**: boosting goes from -0.0125 to
+> +0.0232 and becomes the best standalone model, while `Ridge-std`, `Huber`, `PLS` and
+> both FR/DE hybrids below all turn negative. The measurements here are still correct for
+> the thin-signal regime, and the harness and protocol carried over unchanged; treat the
+> *conclusions* as a record of that regime, not as guidance.
+
 ~50 model configurations across 13 families, all fitted per country, all on the
 rank-transformed target, all scored on the same fold assignments as the ridge baseline
 (**0.2909 +/- 0.0069**, reproduced exactly). Headline claims are re-confirmed on 30

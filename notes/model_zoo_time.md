@@ -2,8 +2,13 @@
 
 Everything in `notes/model_zoo.md` was measured in the 0.29 regime. The `DAY_ID`-decoy
 finding moved the target to ~0.52, and the coordinator was right to be suspicious: **the
-headline conclusion of that document inverts, and four of its five confirmed sub-findings
-fail to transfer.** This file supersedes it.
+headline conclusion of that document inverts, and five of its six confirmed single-model
+findings turn negative.** Its ensembling conclusion survives in direction but not in
+composition. This file supersedes it.
+
+Sections 1-9 are measured against the 0.5231 time-feature baseline. **Section 10 re-tests
+the headline claims against the newer `add_cumulative_returns` commit (83aa235), and one
+of my own findings dies there -- read it before acting on anything above it.**
 
 ## TL;DR
 
@@ -14,23 +19,44 @@ fail to transfer.** This file supersedes it.
    informative time features there is finally enough signal to support interactions.
 2. **The diversity story inverts with it.** In the 0.29 regime, boosting was worthless
    alone and valuable only as a blend partner. Now it is the best standalone model, and
-   *ridge* is the member you drop: the best combination found is
-   **`0.5*z(LightGBM) + 0.5*z(ARDRegression)` with no ridge at all -- 0.5593, +0.0362,
-   15/15**, confirmed on 30 unseen fold seeds.
-3. **The biggest surprise is a linear model.** `ARDRegression`, worth +0.0009 (noise) on
+   *ridge* is the member you drop. Best found:
+   **`0.40*z(LightGBM) + 0.40*z(ARD) + 0.20*z(pooled LightGBM)`, no ridge at all --
+   0.5617 on seeds 0..14, confirmed at 0.5597 on 30 unseen seeds (+0.0352, sd 0.0049,
+   30/30)**. `LGBM + ARD` alone gets most of it (+0.0332, 30/30).
+3. **One of my own findings did not survive the next feature commit -- see section 10.**
+   `ARDRegression`'s +0.0164 collapses to **+0.0003 (10/15)** once the cumulative
+   commodity-return columns land, because ARD was compensating for a missing France
+   feature rather than modelling France better. Point 5, and the France half of point 4,
+   are withdrawn on that basis. LightGBM's win survives the same test at +0.0187 (15/15),
+   and the `LGBM + ARD` blend survives at +0.0233 with a much reduced margin.
+4. **The best *single* model on the 0.5231 feature set is a per-country split: ARD for
+   France, LightGBM for Germany.** 0.5542 on seeds 0..14 (+0.0311, 15/15), **confirmed at 0.5519 on 30 unseen
+   seeds (+0.0275, sd 0.0049, 30/30)**. It captures 83% of the blend's gain in one
+   estimator that fits in 11 seconds for all 15 seeds. The per-country asymmetry survives
+   the regime change -- it just points the other way now, at *which family* each country
+   wants rather than at how much capacity it tolerates.
+5. **The biggest surprise is a linear model (but see point 3).** `ARDRegression`, worth +0.0009 (noise) on
    29 features, is worth **+0.0164 (15/15)** on 87. Automatic relevance determination is
    doing feature selection that ridge's single global alpha cannot: most of the 58 new
    columns are noise, and ARD prunes them per-coefficient. Sparsity was harmful in the old
    regime and is essential in this one -- an exact reversal.
-4. **What did NOT transfer, from my own prior document.** `Ridge-std` +0.0013 -> **-0.0040
+6. **What did NOT transfer, from my own prior document.** `Ridge-std` +0.0013 -> **-0.0040
    (0/15)**; `Huber` +0.0020 -> **-0.0273 (0/15)**; `PLS` +0.0014 -> **-0.0275 (0/15)**;
    `C1` FR-ridge/DE-spline +0.0035 -> **-0.0016 (5/15)**; `C2` FR-ridge/DE-KRR +0.0038 ->
-   **-0.0109 (0/15)**. The France/Germany asymmetry finding is gone with them. Only
-   `Ridge-winsor` survives, and weakly: +0.0022 -> +0.0021 (11/15).
-5. **Kernel and instance methods got much worse, not better.** `SVR-rbf` -0.0137 ->
+   **-0.0109 (0/15)**. The *specific* recipe those hybrids encoded -- "France cannot take
+   nonlinearity, Germany can take a little" -- is dead; the asymmetry itself survives, but
+   as point 4 (France wanted ARD, Germany wants trees). Only `Ridge-winsor` survives
+   unchanged, and weakly: +0.0022 -> +0.0021 (11/15).
+7. **Kernel and instance methods got much worse, not better.** `SVR-rbf` -0.0137 ->
    -0.0538; `kNN-std-dist` -0.0379 -> -0.0829. They cannot cope with 87 columns of mixed
    scale where most are noise. Their OOF correlation with ridge fell (0.85 -> 0.78,
    0.81 -> 0.76), but that is now the signature of a broken model rather than a useful one.
+8. **Tuning boosting makes it worse; the architecture is the whole effect.** Inner-CV-tuned
+   LightGBM lands at +0.0105 against the untuned conservative config's +0.0232, and tuned
+   HistGB at +0.0054 against +0.0114. I pre-registered a prediction in section 7 that tuned
+   LightGBM would land in +0.023..+0.035; it came in below the range *and* below the fixed
+   config, so that prediction was wrong. Use a fixed conservative booster, not a search --
+   point 1 never depended on a tuning budget, which makes it safer rather than shakier.
 
 ## Protocol
 
@@ -42,7 +68,7 @@ fail to transfer.** This file supersedes it.
   * **time-ridge = 0.5231 +/- 0.0061** (15 seeds) -- the paired reference for every row
     below, since every candidate uses the same feature set.
   * **time-ridge + neighbour(k=3) = 0.5277 +/- 0.0076** -- reproduces the coordinator's
-    0.5282. Used as the reference for section 4 only.
+    0.5282. Used as the reference for section 6 only.
 * **Pairing.** Identical `P.make_folds(train.DAY_ID, seed=s)` assignments, seeds 0..14.
   `delta` is the mean of the 15 per-seed differences, `sd(delta)` their sd, `wins/15` the
   count of seeds where the candidate is higher.
@@ -51,7 +77,7 @@ fail to transfer.** This file supersedes it.
   they are therefore built once, outside the fold loop. Everything target-dependent --
   imputation medians, scaling, winsorisation cut-points, the rank transform, and all
   hyperparameter selection -- is fitted inside the fold on that country's training rows.
-  The neighbour-target features in section 4 are the one genuinely leak-prone piece and are
+  The neighbour-target features in section 6 are the one genuinely leak-prone piece and are
   rebuilt per fold with sources restricted to that fold's training rows of that country,
   with the identity match dropped.
 * **Sanity check on the jump.** 0.29 -> 0.52 is large enough to deserve suspicion. It is not
@@ -71,10 +97,17 @@ fail to transfer.** This file supersedes it.
 
 | model | config | score | delta vs ridge | sd(delta) | wins/15 | corr(ridge) | FR rho | DE rho |
 |---|---|---|---|---|---|---|---|---|
+| `FRard-DElgbm` | ARD for France, LightGBM for Germany, both on z-scored features | 0.5542 | +0.0311 | 0.0040 | 15/15 | 0.913 | 0.2666 | 0.7850 |
 | `LGBM-leaves4` | identical config to the 0.29-regime run | 0.5463 | +0.0232 | 0.0072 | 15/15 | 0.881 | 0.2426 | 0.7847 |
+| `LGBM-stdprep` | LightGBM on z-scored features (control: trees are scale-invariant) | 0.5461 | +0.0230 | 0.0077 | 15/15 | 0.881 | 0.2419 | 0.7850 |
+| `ARD-std-check` | determinism control: ARDRegression re-run in a separate process, must match the row above | 0.5395 | +0.0164 | 0.0042 | 15/15 | 0.926 | 0.2666 | 0.7677 |
 | `ARDRegression` | default (was +0.0009, best DE linear) | 0.5395 | +0.0164 | 0.0042 | 15/15 | 0.926 | 0.2666 | 0.7677 |
+| `CatBoost-fixed` | depth 4, lr .03, 400 iters, l2 5 (no tuning) | 0.5387 | +0.0156 | 0.0063 | 15/15 | 0.866 | 0.2320 | 0.7808 |
+| `POOLED-CatBoost-fixed` | pooled over FR+DE with COUNTRY, depth 6, 600 iters | 0.5358 | +0.0127 | 0.0083 | 14/15 | 0.837 | 0.2209 | 0.7723 |
 | `HGB-shallow` | identical config to the 0.29-regime run | 0.5345 | +0.0114 | 0.0070 | 14/15 | 0.856 | 0.2329 | 0.7787 |
+| `LGBM-tuned` | num_leaves tuned inner (4/15/31), 250 rounds, lr .03, colsample .6 | 0.5336 | +0.0105 | 0.0088 | 13/15 | 0.850 | 0.2308 | 0.7802 |
 | `Spline+Ridge` | cubic B-splines per feature, n_knots tuned inner, RidgeCV head | 0.5286 | +0.0055 | 0.0052 | 13/15 | 0.934 | 0.2251 | 0.7684 |
+| `HGB-tuned` | max_depth tuned inner (2/4/None), 250 iters, lr .03, l2 5 | 0.5285 | +0.0054 | 0.0082 | 10/15 | 0.830 | 0.2249 | 0.7787 |
 | `Ridge-winsor` | features clipped to fold-train 2/98 pct (was +0.0022, 25/30) | 0.5251 | +0.0021 | 0.0028 | 11/15 | 0.969 | 0.2137 | 0.7718 |
 | `C1-FRridge-DEspline` | ridge FR + splines DE (was +0.0035, 22/30) | 0.5215 | -0.0016 | 0.0032 | 5/15 | 0.963 | 0.2053 | 0.7684 |
 | `POOLED-LGBM-leaves15` | pooled, COUNTRY feature, leaves 15 / 600 rounds (2x the rows) | 0.5214 | -0.0017 | 0.0077 | 6/15 | 0.803 | 0.2122 | 0.7614 |
@@ -94,25 +127,19 @@ fail to transfer.** This file supersedes it.
 Averaged over the 15 seeds. Compare with the 0.29 regime, where the same
 boosting/SVR/kNN members sat at 0.78-0.85 against ridge.
 
-| | `ridge` | `ARDRegression` | `C1-FRridge-DEspline` | `C2-FRridge-DEkrr` | `HGB-shallow` | `Huber` | `LGBM-leaves4` | `PLS` | `POOLED-HGB-shallow` | `POOLED-LGBM-leaves15` | `POOLED-LGBM-leaves4` | `POOLED-ridge` | `Ridge-std` | `Ridge-winsor` | `SVR-rbf` | `Spline+Ridge` | `kNN-std-dist` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `ridge` | 1.000 | 0.926 | 0.963 | 0.966 | 0.856 | 0.928 | 0.881 | 0.921 | 0.770 | 0.803 | 0.739 | 0.702 | 0.976 | 0.969 | 0.777 | 0.934 | 0.761 |
-| `ARDRegression` | 0.926 | 1.000 | 0.903 | 0.904 | 0.834 | 0.907 | 0.858 | 0.893 | 0.751 | 0.781 | 0.714 | 0.655 | 0.912 | 0.910 | 0.747 | 0.882 | 0.715 |
-| `C1-FRridge-DEspline` | 0.963 | 0.903 | 1.000 | 0.976 | 0.877 | 0.900 | 0.904 | 0.914 | 0.794 | 0.825 | 0.764 | 0.690 | 0.984 | 0.980 | 0.782 | 0.966 | 0.782 |
-| `C2-FRridge-DEkrr` | 0.966 | 0.904 | 0.976 | 1.000 | 0.857 | 0.906 | 0.883 | 0.920 | 0.778 | 0.805 | 0.749 | 0.689 | 0.991 | 0.979 | 0.781 | 0.942 | 0.772 |
-| `HGB-shallow` | 0.856 | 0.834 | 0.877 | 0.857 | 1.000 | 0.796 | 0.962 | 0.809 | 0.818 | 0.871 | 0.773 | 0.625 | 0.864 | 0.879 | 0.757 | 0.899 | 0.739 |
-| `Huber` | 0.928 | 0.907 | 0.900 | 0.906 | 0.796 | 1.000 | 0.813 | 0.919 | 0.704 | 0.757 | 0.664 | 0.640 | 0.914 | 0.905 | 0.769 | 0.864 | 0.678 |
-| `LGBM-leaves4` | 0.881 | 0.858 | 0.904 | 0.883 | 0.962 | 0.813 | 1.000 | 0.828 | 0.837 | 0.887 | 0.798 | 0.646 | 0.891 | 0.908 | 0.771 | 0.926 | 0.764 |
-| `PLS` | 0.921 | 0.893 | 0.914 | 0.920 | 0.809 | 0.919 | 0.828 | 1.000 | 0.712 | 0.759 | 0.675 | 0.629 | 0.926 | 0.916 | 0.751 | 0.880 | 0.708 |
-| `POOLED-HGB-shallow` | 0.770 | 0.751 | 0.794 | 0.778 | 0.818 | 0.704 | 0.837 | 0.712 | 1.000 | 0.867 | 0.957 | 0.816 | 0.784 | 0.793 | 0.664 | 0.807 | 0.737 |
-| `POOLED-LGBM-leaves15` | 0.803 | 0.781 | 0.825 | 0.805 | 0.871 | 0.757 | 0.887 | 0.759 | 0.867 | 1.000 | 0.829 | 0.668 | 0.811 | 0.824 | 0.760 | 0.851 | 0.714 |
-| `POOLED-LGBM-leaves4` | 0.739 | 0.714 | 0.764 | 0.749 | 0.773 | 0.664 | 0.798 | 0.675 | 0.957 | 0.829 | 1.000 | 0.882 | 0.755 | 0.764 | 0.632 | 0.775 | 0.742 |
-| `POOLED-ridge` | 0.702 | 0.655 | 0.690 | 0.689 | 0.625 | 0.640 | 0.646 | 0.629 | 0.816 | 0.668 | 0.882 | 1.000 | 0.697 | 0.693 | 0.562 | 0.680 | 0.702 |
-| `Ridge-std` | 0.976 | 0.912 | 0.984 | 0.991 | 0.864 | 0.914 | 0.891 | 0.926 | 0.784 | 0.811 | 0.755 | 0.697 | 1.000 | 0.989 | 0.777 | 0.950 | 0.780 |
-| `Ridge-winsor` | 0.969 | 0.910 | 0.980 | 0.979 | 0.879 | 0.905 | 0.908 | 0.916 | 0.793 | 0.824 | 0.764 | 0.693 | 0.989 | 1.000 | 0.785 | 0.961 | 0.779 |
-| `SVR-rbf` | 0.777 | 0.747 | 0.782 | 0.781 | 0.757 | 0.769 | 0.771 | 0.751 | 0.664 | 0.760 | 0.632 | 0.562 | 0.777 | 0.785 | 1.000 | 0.803 | 0.691 |
-| `Spline+Ridge` | 0.934 | 0.882 | 0.966 | 0.942 | 0.899 | 0.864 | 0.926 | 0.880 | 0.807 | 0.851 | 0.775 | 0.680 | 0.950 | 0.961 | 0.803 | 1.000 | 0.794 |
-| `kNN-std-dist` | 0.761 | 0.715 | 0.782 | 0.772 | 0.739 | 0.678 | 0.764 | 0.708 | 0.737 | 0.714 | 0.742 | 0.702 | 0.780 | 0.779 | 0.691 | 0.794 | 1.000 |
+| | `ridge` | `ARDRegression` | `LGBM-leaves4` | `HGB-shallow` | `CatBoost-fixed` | `Spline+Ridge` | `Ridge-winsor` | `FRard-DElgbm` | `POOLED-LGBM-leaves15` | `SVR-rbf` | `kNN-std-dist` |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `ridge` | 1.000 | 0.926 | 0.881 | 0.856 | 0.866 | 0.934 | 0.969 | 0.913 | 0.803 | 0.777 | 0.761 |
+| `ARDRegression` | 0.926 | 1.000 | 0.858 | 0.834 | 0.843 | 0.882 | 0.910 | 0.970 | 0.781 | 0.747 | 0.715 |
+| `LGBM-leaves4` | 0.881 | 0.858 | 1.000 | 0.962 | 0.958 | 0.926 | 0.908 | 0.896 | 0.887 | 0.771 | 0.764 |
+| `HGB-shallow` | 0.856 | 0.834 | 0.962 | 1.000 | 0.950 | 0.899 | 0.879 | 0.870 | 0.871 | 0.757 | 0.739 |
+| `CatBoost-fixed` | 0.866 | 0.843 | 0.958 | 0.950 | 1.000 | 0.917 | 0.890 | 0.879 | 0.887 | 0.793 | 0.761 |
+| `Spline+Ridge` | 0.934 | 0.882 | 0.926 | 0.899 | 0.917 | 1.000 | 0.961 | 0.891 | 0.851 | 0.803 | 0.794 |
+| `Ridge-winsor` | 0.969 | 0.910 | 0.908 | 0.879 | 0.890 | 0.961 | 1.000 | 0.904 | 0.824 | 0.785 | 0.779 |
+| `FRard-DElgbm` | 0.913 | 0.970 | 0.896 | 0.870 | 0.879 | 0.891 | 0.904 | 1.000 | 0.814 | 0.748 | 0.726 |
+| `POOLED-LGBM-leaves15` | 0.803 | 0.781 | 0.887 | 0.871 | 0.887 | 0.851 | 0.824 | 0.814 | 1.000 | 0.760 | 0.714 |
+| `SVR-rbf` | 0.777 | 0.747 | 0.771 | 0.757 | 0.793 | 0.803 | 0.785 | 0.748 | 0.760 | 1.000 | 0.691 |
+| `kNN-std-dist` | 0.761 | 0.715 | 0.764 | 0.739 | 0.761 | 0.794 | 0.779 | 0.726 | 0.714 | 0.691 | 1.000 |
 
 ## 3. Blends with time-ridge (pooled-z, seeds 0..14)
 
@@ -120,10 +147,17 @@ boosting/SVR/kNN members sat at 0.78-0.85 against ridge.
 
 | candidate | corr(ridge) | w=0.25 | delta | w=0.40 | delta | w=0.50 | delta |
 |---|---|---|---|---|---|---|---|
+| `FRard-DElgbm` | 0.913 | 0.5395 | +0.0165 (15/15) | 0.5462 | +0.0231 (15/15) | 0.5493 | +0.0262 (15/15) |
 | `LGBM-leaves4` | 0.881 | 0.5402 | +0.0172 (15/15) | 0.5463 | +0.0232 (15/15) | 0.5487 | +0.0257 (15/15) |
+| `LGBM-stdprep` | 0.881 | 0.5402 | +0.0171 (15/15) | 0.5462 | +0.0231 (15/15) | 0.5486 | +0.0255 (15/15) |
+| `POOLED-CatBoost-fixed` | 0.837 | 0.5409 | +0.0178 (15/15) | 0.5462 | +0.0232 (15/15) | 0.5478 | +0.0247 (15/15) |
+| `CatBoost-fixed` | 0.866 | 0.5385 | +0.0154 (15/15) | 0.5436 | +0.0205 (15/15) | 0.5453 | +0.0222 (15/15) |
+| `LGBM-tuned` | 0.850 | 0.5389 | +0.0158 (15/15) | 0.5434 | +0.0203 (15/15) | 0.5445 | +0.0214 (15/15) |
 | `HGB-shallow` | 0.856 | 0.5382 | +0.0151 (15/15) | 0.5426 | +0.0195 (15/15) | 0.5439 | +0.0208 (15/15) |
 | `POOLED-LGBM-leaves15` | 0.803 | 0.5403 | +0.0172 (15/15) | 0.5439 | +0.0208 (15/15) | 0.5437 | +0.0206 (15/15) |
+| `HGB-tuned` | 0.830 | 0.5390 | +0.0159 (15/15) | 0.5426 | +0.0196 (15/15) | 0.5431 | +0.0200 (15/15) |
 | `ARDRegression` | 0.926 | 0.5328 | +0.0097 (15/15) | 0.5368 | +0.0137 (15/15) | 0.5387 | +0.0156 (15/15) |
+| `ARD-std-check` | 0.926 | 0.5328 | +0.0097 (15/15) | 0.5368 | +0.0137 (15/15) | 0.5387 | +0.0156 (15/15) |
 | `POOLED-HGB-shallow` | 0.770 | 0.5338 | +0.0107 (15/15) | 0.5314 | +0.0083 (15/15) | 0.5270 | +0.0039 (13/15) |
 | `POOLED-LGBM-leaves4` | 0.739 | 0.5327 | +0.0096 (15/15) | 0.5279 | +0.0049 (14/15) | 0.5218 | -0.0012 (7/15) |
 | `Spline+Ridge` | 0.934 | 0.5291 | +0.0060 (15/15) | 0.5313 | +0.0082 (15/15) | 0.5321 | +0.0090 (15/15) |
@@ -155,6 +189,9 @@ section 5 re-scores the survivors on fold seeds never used for selection.
 | 0.50 LGBM + 0.50 ARD  (no ridge) | 0.5593 | +0.0362 | 0.0044 | 15/15 |
 | equal LGBM + ARD + HGB  (no ridge) | 0.5569 | +0.0338 | 0.0050 | 15/15 |
 | equal LGBM + ARD + Spline  (no ridge) | 0.5554 | +0.0323 | 0.0040 | 15/15 |
+| 0.40 LGBM + 0.40 ARD + 0.20 pooled-LGBM  (BEST) | 0.5617 | +0.0386 | 0.0048 | 15/15 |
+| 0.40 LGBM + 0.40 ARD + 0.20 pooled-CatBoost | 0.5619 | +0.0388 | 0.0048 | 15/15 |
+| ARD-FR/LGBM-DE single estimator (no blend) | 0.5542 | +0.0311 | 0.0040 | 15/15 |
 
 ## 5. Confirmation on 30 fresh fold seeds (15..44)
 
@@ -168,11 +205,14 @@ fresh seeds 15..44 (n=30)   time-ridge 0.5245 +/- 0.0082
 | ARDRegression alone | 0.5376 | +0.0131 | 0.0052 | 30/30 |
 | LGBM alone | 0.5452 | +0.0207 | 0.0068 | 30/30 |
 | HGB alone | 0.5309 | +0.0065 | 0.0065 | 26/30 |
+| ARD-FR + LightGBM-DE (single model) | 0.5519 | +0.0275 | 0.0049 | 30/30 |
 | 0.50 LGBM + 0.50 ARD (no ridge) | 0.5577 | +0.0332 | 0.0044 | 30/30 |
+| 0.40 LGBM + 0.40 ARD + 0.20 pooled-LGBM | 0.5597 | +0.0352 | 0.0049 | 30/30 |
+| 0.50 (ARD-FR/LGBM-DE) + 0.50 ARD | 0.5504 | +0.0259 | 0.0048 | 30/30 |
 | equal LGBM + ARD + HGB (no ridge) | 0.5543 | +0.0298 | 0.0050 | 30/30 |
 | equal ridge + LGBM + ARD + HGB | 0.5532 | +0.0287 | 0.0037 | 30/30 |
 
-## 6. Temporal-neighbour features (section 4 of the coordinator's brief)
+## 6. Temporal-neighbour features
 
 Scored against the ridge+neighbour(k=3) baseline of 0.5277, not plain time-ridge.
 
@@ -211,7 +251,43 @@ margin the largest France gain in either document, and more than double what the
 features themselves bought France. LightGBM manages FR 0.2426. France has 61 columns and
 851 rows, of which 58 columns are derived and mostly irrelevant to it; ridge's single alpha
 has to shrink everything to survive that, and ARD does not. Anyone working on France next
-should start from ARD, not ridge.
+should start from ARD, not ridge. Acting on that directly -- ARD for France, LightGBM
+for Germany, one estimator per country as usual -- gives **0.5542 (+0.0311, 15/15),
+confirmed at +0.0275 (30/30) on fresh seeds**, which is 83% of what the full blend buys
+for a model that fits in 11 seconds.
+
+**Tuning boosting makes it WORSE here, and my prediction about that was wrong.** Both
+inner-CV-tuned grids finished after the rest of this document was written, and both lost
+to the hand-set conservative configs they were meant to improve on:
+
+| model | tuned | fixed | fixed config |
+|---|---|---|---|
+| LightGBM | +0.0105 (13/15) | **+0.0232 (15/15)** | 4 leaves, 300 rounds, lr .02, l2 20 |
+| HistGB | +0.0054 (10/15) | **+0.0114 (14/15)** | depth 2, 300 iters, lr .03, l2 10 |
+
+I had recorded a prediction in this file before the runs landed -- "tuned LightGBM lands
+between +0.023 and +0.035" -- and it came in at +0.0105, below the whole range and below
+the untuned config. Selecting `num_leaves` from {4, 15, 31} by 3-fold inner CV on ~515
+German rows is itself a noisy operation, and it kept choosing deeper trees than the fixed
+choice. So the mechanism is architecture, not tuning: gradient boosting on differenced
+time features beats ridge, and the way to get that benefit is a *fixed conservative*
+config, not a search. That also makes the headline safer rather than shakier -- the
++0.0232 result never depended on a tuning budget.
+
+The fixed configs used for the headline rows are, if anything, still under-powered: they
+are the exact settings chosen to cripple capacity in the 0.29 regime (4 leaves, depth 2,
+`reg_lambda=20`, `min_child_samples=40`, 300 rounds at lr 0.02). `CatBoost-fixed` at
+depth 4 -- more capacity, no tuning -- lands at +0.0156, between the two.
+
+Every row in this document did eventually complete, but only just: the machine spent most
+of the session at load 190-230 with a system-wide OOM that killed every python process at
+one point, and the last row (the pooled CatBoost, 1474 s) landed after the conclusions had
+already been written -- and changed one of them. See the pooled paragraph below.
+
+**The three boosting libraries are one member, not three.** LightGBM, HistGradientBoosting
+and CatBoost sit at 0.95-0.96 mutual OOF correlation and score 0.5463 / 0.5345 / 0.5387.
+Choose on speed, not on diversity: LightGBM is both the strongest and the fastest here
+(83 s for all 15 seeds against CatBoost's 508 s single-threaded).
 
 **Boosting and ARD are complementary, and ridge is redundant to both.** LightGBM's OOF
 correlates 0.881 with ridge and 0.858 with ARD; ARD correlates 0.926 with ridge. So the
@@ -221,15 +297,35 @@ from the ensemble *improves* it: `LGBM + ARD` at 0.5593 beats `ridge + LGBM + AR
 0.5539 and `ridge + LGBM + ARD + HGB` at 0.5550. On fresh seeds, `0.5 LGBM + 0.5 ARD`
 is +0.0332 (30/30) against time-ridge's +0.0000.
 
-**The winner's pooled-with-COUNTRY shape does not reproduce here -- a clean negative.**
-A single model over FR+DE with COUNTRY as a feature loses in every configuration tried:
-pooled RidgeCV -0.1280 (a country dummy can only move the intercept, so this is expected),
-pooled LightGBM at the per-country winner's settings -0.0493, pooled HistGB -0.0367, and
-the best pooled tree found -- LightGBM with 15 leaves and 600 rounds, given the extra
-capacity the doubled row count allows -- only reaches parity at -0.0017 (6/15). Doubling
-the rows does not compensate for forcing one function to serve two price series. If the
-winner's CatBoost really was pooled, the gain must have come from elsewhere in his
-pipeline, not from pooling itself.
+**The winner's pooled-with-COUNTRY shape works, but only with real capacity -- and I got
+this wrong the first time.** My first four pooled runs all lost, and I had written the
+result up as a clean negative. The fifth, a depth-6 CatBoost with 600 rounds, finished last
+and **beats ridge by +0.0127 (14/15)**. The pattern across all five is capacity, not
+pooling:
+
+| pooled model (COUNTRY as a feature) | delta vs ridge | wins |
+|---|---|---|
+| RidgeCV | -0.1280 | 0/15 |
+| LightGBM, 4 leaves (per-country winner's settings) | -0.0493 | 0/15 |
+| HistGB, depth 2 | -0.0367 | 0/15 |
+| LightGBM, 15 leaves / 600 rounds | -0.0017 | 6/15 |
+| **CatBoost, depth 6 / 600 rounds** | **+0.0127** | **14/15** |
+
+That is exactly the ordering you would predict once you accept point 1: pooling doubles the
+rows, and doubling the rows *raises* the capacity the data will support, so a pooled model
+needs to be bigger than the per-country one, not the same size. Transplanting the
+per-country settings is what made it look dead. The pooled ridge row stays at -0.1280 and
+is still informative: a country dummy can only move the intercept, so a linear pooled model
+genuinely cannot work no matter how it is fitted.
+
+The corrected conclusion is narrower than "pooling loses". Per-country still wins on raw
+score -- +0.0232 for per-country LightGBM against +0.0127 for the best pooled model -- so
+I would not submit a pooled model alone. But pooling is a real and *different* view: the
+pooled CatBoost correlates 0.837 with ridge and only 0.819 with ARD, and as a 20% ensemble
+member it is worth +0.0388 against the two-member blend's +0.0362. The pooled LightGBM
+gives +0.0386 for a fifth of the fit time, so either serves; they are 0.93 correlated with
+each other and count as one slot. If the challenge winner's CatBoost really was pooled, a
+depth-6-class model is the shape that makes that plausible.
 
 **Everything that made kNN and SVR interesting is gone.** Both were mediocre-but-diverse in
 the 0.29 regime and were worth +0.004 to +0.006 in a blend. On 87 columns they are simply
@@ -271,7 +367,7 @@ Xva = np.nan_to_num(v[cols].fillna(med).to_numpy(float))
 ytr = rankdata(t.TARGET.values) / len(t)
 ```
 
-### 8.1 Best single model: LightGBM, per country (+0.0207, 30/30 on fresh seeds)
+### 8.1 Best single family: LightGBM, per country (+0.0207, 30/30 on fresh seeds)
 
 Raw (unscaled) imputed features. This is byte-for-byte the config that *lost* by 0.0125
 on the base features -- nothing about it was retuned for the new regime.
@@ -294,11 +390,41 @@ from sklearn.linear_model import ARDRegression
 ARDRegression()                      # on (X - mu) / sd, fitted inside the fold
 ```
 
-### 8.3 BEST OVERALL: drop ridge, blend LightGBM with ARD (+0.0332, 30/30 on fresh seeds)
+### 8.3 Best single estimator: ARD for France, LightGBM for Germany (+0.0275, 30/30 fresh)
+
+Both heads on `prep="std"` -- ARD needs it and trees are indifferent (control run
+`LGBM-stdprep` scores 0.5461 against 0.5463 raw, so the shared prep costs nothing).
+
+```python
+def make_model(country, seed):
+    if country == "FR":
+        return ARDRegression()
+    return lgb.LGBMRegressor(n_estimators=300, learning_rate=0.02, num_leaves=4,
+                             min_child_samples=40, subsample=0.7, subsample_freq=1,
+                             colsample_bytree=0.4, reg_lambda=20.0,
+                             random_state=seed, n_jobs=1, verbose=-1)
+```
+
+### 8.4 BEST OVERALL: drop ridge (+0.0352, 30/30 on fresh seeds)
+
+Third member is one LightGBM fitted over FR+DE together with a COUNTRY indicator column
+appended to the 87 features and the target ranked over the pooled fold-training rows. It
+scores at ridge's level on its own; it earns its place by being uncorrelated with the
+per-country models (0.803 with ridge, 0.887 with per-country LightGBM).
+`POOLED-CatBoost-fixed` (depth 6, 600 iters) is interchangeable in that slot: better
+alone (+0.0127 vs -0.0017) and +0.0388 in the blend against +0.0386, but 1474 s of fit
+time against 156 s. The two are 0.93 correlated -- use one, not both.
 
 ```python
 z = lambda v: (v - v.mean()) / v.std()          # global, never per country
-pred = 0.5 * z(lgbm_pred) + 0.5 * z(ard_pred)   # 0.5577 on 30 unseen fold seeds
+pred = 0.40 * z(lgbm_pred) + 0.40 * z(ard_pred) + 0.20 * z(pooled_lgbm_pred)
+# 0.5617 on seeds 0..14 ; 0.5597 on 30 unseen fold seeds
+# drop the third member and it is 0.5593 / 0.5577 -- still worth having
+
+lgb.LGBMRegressor(n_estimators=600, learning_rate=0.03, num_leaves=15,
+                  min_child_samples=20, subsample=0.8, subsample_freq=1,
+                  colsample_bytree=0.6, reg_lambda=5.0,
+                  random_state=seed, n_jobs=1, verbose=-1)   # the pooled member
 ```
 
 ## 9. Out-of-fold bundle
@@ -306,17 +432,58 @@ pred = 0.5 * z(lgbm_pred) + 0.5 * z(ard_pred)   # 0.5577 on 30 unseen fold seeds
 `notes/oof_zoo_time.pkl` is a `dict[str, list[np.ndarray]]`, 15 OOF vectors per model
 (fold seeds 0..14, in order), each of length 1494 aligned to `P.build_frames()[0]` row
 order. Members: `ridge_time`, `ridge_time_nb`, `LGBM-leaves4`, `ARDRegression`,
-`HGB-shallow`, `Spline+Ridge`, `SVR-rbf`, `kNN-std-dist`, `Ridge-winsor`,
-`NB-LGBM-leaves4`, `NB-HGB-shallow`.
+`HGB-shallow`, `CatBoost-fixed`, `Spline+Ridge`, `SVR-rbf`, `kNN-std-dist`,
+`Ridge-winsor`, `FRard-DElgbm`, `POOLED-LGBM-leaves15`, `POOLED-CatBoost-fixed`,
+`LGBM-tuned`, `HGB-tuned`, `NB-LGBM-leaves4`, `NB-HGB-shallow` -- 17 in all.
 
 ```python
 import pickle, numpy as np
 from scipy.stats import spearmanr
 oof = pickle.load(open("notes/oof_zoo_time.pkl", "rb"))
 z = lambda v: (v - v.mean()) / v.std()
-best = [0.5 * z(l) + 0.5 * z(a)
-        for l, a in zip(oof["LGBM-leaves4"], oof["ARDRegression"])]   # 0.5593 on seeds 0..14
+best = [0.4 * z(l) + 0.4 * z(a) + 0.2 * z(p)
+        for l, a, p in zip(oof["LGBM-leaves4"], oof["ARDRegression"],
+                           oof["POOLED-LGBM-leaves15"])]              # 0.5617 on seeds 0..14
 ```
 
 `SVR-rbf` and `kNN-std-dist` are kept in the bundle only so the negative result is
 reproducible; do not put them in an ensemble.
+
+## 10. Re-test against commit 83aa235 (cumulative commodity returns) -- ONE FINDING DIES
+
+While this sweep was running, another agent landed `add_cumulative_returns`, which fixes
+the France bottleneck with a feature (trailing sums of GAS/COAL/CARBON returns, 6 columns).
+Since section 7 argues France is the open problem and ARD is the answer to it, that commit
+is a direct test of my own conclusion. Same harness, same folds, same pairing, with the 6
+cumulative columns appended to both countries (FR 67 cols, DE 93):
+
+| model | score | delta vs ridge | sd(delta) | wins/15 | FR rho | DE rho |
+|---|---|---|---|---|---|---|
+| `ridge` (new reference) | 0.5439 | +0.0000 | 0.0000 | 0/15 | 0.2874 | 0.7595 |
+| `ARDRegression` | 0.5442 | **+0.0003** | 0.0034 | 10/15 | 0.2821 | 0.7681 |
+| `LGBM-leaves4` | 0.5626 | **+0.0187** | 0.0070 | 15/15 | 0.2896 | 0.7838 |
+| `ARD-FR + LGBM-DE` | 0.5584 | +0.0145 | 0.0036 | 15/15 | 0.2821 | 0.7836 |
+| `0.5 LGBM + 0.5 ARD` | 0.5672 | +0.0233 | 0.0037 | 15/15 | | |
+
+**The ARD finding does not survive.** +0.0164 (15/15) becomes +0.0003 (10/15) -- pure
+noise. And the mechanism is now obvious in hindsight: ARD was never solving France, it was
+*compensating* for a missing France feature. Ridge on 61 mostly-irrelevant columns had to
+over-shrink; ARD pruned them instead and recovered FR rho 0.2666. Give ridge six columns
+that actually carry French signal and it reaches FR rho **0.2874** on its own -- better
+than ARD ever managed -- and the relevance-determination advantage has nothing left to do.
+Section 7's advice ("anyone working on France should start from ARD") is **withdrawn**:
+start from the cumulative-return features instead, and then ridge is fine.
+
+**The capacity finding does survive, which is the one that mattered.** LightGBM keeps
++0.0187 at 15/15 on the richer feature set, and its DE rho is still the highest of any
+model tried (0.7838 against ridge's 0.7595). "Added capacity always loses" stays dead.
+
+**The blend survives but shrinks.** `0.5 LGBM + 0.5 ARD` is still the best combination at
++0.0233 (15/15), but its margin over LightGBM alone falls from +0.0130 to +0.0046, exactly
+as you would expect once ARD stops being a distinct source of France signal.
+
+Read sections 1-9 as measured against the 0.5231 feature set. Where this section and those
+disagree, this one wins. It is also the third feature regime this project has been through
+in a day, so the honest summary of the *method* is: the boosting result has now survived two
+regime changes, the ARD result survived one and died in the next, and nothing here should be
+assumed to transfer to a fourth without being re-run -- it takes about three minutes.
