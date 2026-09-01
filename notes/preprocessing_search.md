@@ -91,6 +91,12 @@ identical to 4 decimal places (FR has 3 features, it cannot overfit). DE at alph
 is the entire +0.006. The 29-feature / 643-row DE model is being **over**-regularised by GCV,
 not under-regularised.
 
+**Per-country vs shared alpha selection: shared wins, or rather, per-country buys nothing.**
+A single shared alpha=10 for both countries scores +0.0056; the best per-country pair in the
+whole 3x3 grid (FR=100, DE=10) scores +0.0060. That 0.0004 gap is well inside the paired noise
+(`se` ~0.0005 on both). Since FR is flat in alpha, there is no second parameter worth fitting --
+tune one alpha, aimed at DE, and give it to both.
+
 Notes:
 * Widening or shifting the alpha grid does nothing; the problem is the *criterion*, not the grid.
 * alpha 1-50 is a broad plateau, so "10" is not a knife-edge fit. Still, it is a constant tuned
@@ -518,3 +524,9 @@ differ by 0.0026 purely from fold-assignment luck, which is exactly the point of
 
 `experiments/harness.py` plus `b1`..`b13`, `b3b`, and `verify_recipes.py`; each writes a JSON
 of the same rows. Nothing here has been committed.
+
+Two gaps in the raw record, neither affecting a conclusion: `b7` crashed on its final variant
+(a seed-count mismatch in the shared-alpha loop) after printing every other row, so it has no
+JSON -- its rows are transcribed above from `b7.log`, and the shared-vs-per-country alpha
+question it was meant to answer is answered better by the `b12` cross-grid. `b3` was killed
+partway through; its remaining variants were re-run as `b3b` at 10 seeds.

@@ -90,6 +90,7 @@ predictions and ridge's, averaged over seeds.
 | `ET-leaf50` | trees | 400 extra trees, unbounded depth, min_leaf 50, max_feat 1.0 | 0.2850 | -0.0059 | 0.0066 | 1/15 | 0.891 |
 | `GP-lin+RBF` | GP | C*Dot + C*RBF(iso) + White | 0.2849 | -0.0060 | 0.0048 | 2/15 | 0.956 |
 | `LGBM-stumps` | trees | num_leaves 2, lr .02, 500 rounds, l2=20, ff .4/1.0, bagging .7 | 0.2819 | -0.0090 | 0.0063 | 0/15 | 0.870 |
+| `GP-Matern52-ard` | GP | C*Matern(nu=2.5,ARD)+White, capped, 10 seeds | 0.2814 | -0.0072 | 0.0099 | 2/10 | 0.801 |
 | `Ridge-rankfeat` | linear (robust) | RidgeCV on within-fold rank-transformed features | 0.2807 | -0.0102 | 0.0043 | 0/15 | 0.962 |
 | `XGB-depth1` | trees | depth 1, lr .02, 500 rounds, mcw 10, l2=20, colsample .4/1.0 | 0.2796 | -0.0113 | 0.0053 | 0/15 | 0.871 |
 | `RF-leaf50` | trees | 400 trees, unbounded depth, min_leaf 50, max_feat .3/1.0 | 0.2786 | -0.0123 | 0.0065 | 0/15 | 0.858 |
@@ -136,6 +137,7 @@ them loses to ridge on its own.
 | `SVR-rbf-rankfeat` | 0.2497 | 0.741 | +0.0051 at w=0.25 |
 | `HGB-shallow` | 0.2635 | 0.776 | +0.0060 at w=0.25 |
 | `kNN-PCA-rank` | 0.2418 | 0.786 | -0.0001 at w=0.25 |
+| `GP-Matern52-ard` | 0.2814 | 0.801 | +0.0110 at w=0.5 |
 | `kNN-rank-L1` | 0.2447 | 0.805 | -0.0005 at w=0.25 |
 | `kNN-rank-dist` | 0.2417 | 0.807 | -0.0012 at w=0.25 |
 | `kNN-std-dist` | 0.2530 | 0.810 | +0.0042 at w=0.25 |
@@ -181,6 +183,7 @@ Ridge scores FR rho 0.2084 and DE rho 0.3598. Sorted by DE.
 | `GP-lin+RBF` | 0.2042 | -0.0043 (5/15) | 0.3539 | -0.0059 (1/15) | 0.910 | 0.990 |
 | `ElasticNetCV` | 0.2070 | -0.0015 (2/15) | 0.3531 | -0.0066 (2/15) | 0.999 | 0.949 |
 | `XGB-depth2` | 0.1920 | -0.0165 (0/15) | 0.3529 | -0.0069 (5/15) | 0.817 | 0.849 |
+| `GP-Matern52-ard` | 0.2025 | -0.0061 (5/10) | 0.3527 | -0.0026 (3/10) | 0.881 | 0.754 |
 | `SVR-linear` | 0.2121 | +0.0037 (13/15) | 0.3523 | -0.0074 (3/15) | 0.988 | 0.968 |
 | `LGBM-stumps` | 0.1950 | -0.0134 (1/15) | 0.3520 | -0.0077 (3/15) | 0.879 | 0.865 |
 | `LGBM-leaves4` | 0.1926 | -0.0158 (1/15) | 0.3507 | -0.0090 (4/15) | 0.796 | 0.846 |
@@ -226,6 +229,7 @@ Weights are scanned here, so these are selection-inflated; see section 5.
 
 | candidate | corr(ridge) | blend w=0.25 | delta | blend w=0.40 | delta | blend w=0.50 | delta |
 |---|---|---|---|---|---|---|---|
+| `GP-Matern52-ard` | 0.801 | 0.2972 | +0.0086 (10/10) | 0.2996 | +0.0109 (10/10) | 0.2996 | +0.0110 (10/10) |
 | `LGBM-leaves4` | 0.825 | 0.2978 | +0.0069 (15/15) | 0.2984 | +0.0075 (15/15) | 0.2976 | +0.0067 (14/15) |
 | `GP-RBF-ard` | 0.819 | 0.2960 | +0.0074 (10/10) | 0.2975 | +0.0089 (10/10) | 0.2973 | +0.0087 (9/10) |
 | `SVR-rbf` | 0.850 | 0.2967 | +0.0058 (15/15) | 0.2973 | +0.0064 (15/15) | 0.2964 | +0.0055 (13/15) |
@@ -312,6 +316,7 @@ Raw predictions, ridge for one country and the candidate for the other.
 | `RF-leaf50` | 0.2866 | -0.0043 (4/15) | 0.2866 | -0.0043 (1/15) |
 | `ElasticNetCV` | 0.2863 | -0.0046 (2/15) | 0.2903 | -0.0006 (2/15) |
 | `SVR-rbf` | 0.2858 | -0.0051 (2/15) | 0.2783 | -0.0126 (1/15) |
+| `GP-Matern52-ard` | 0.2857 | -0.0029 (3/10) | 0.2846 | -0.0040 (2/10) |
 | `KRR-laplacian` | 0.2848 | -0.0061 (3/15) | 0.2803 | -0.0106 (2/15) |
 | `SVR-linear` | 0.2847 | -0.0062 (2/15) | 0.2894 | -0.0015 (3/15) |
 | `ET-leaf50` | 0.2847 | -0.0062 (2/15) | 0.2862 | -0.0047 (0/15) |
@@ -435,6 +440,15 @@ outlier story, because ranking the target has already dealt with the tails; RANS
 and SGD-huber (-0.023) fail the same way. Every kNN variant loses 0.038-0.064. Winsorising
 helps plain ridge (+0.0022) but *hurts* the spline model (`C4` at -0.0014 on fresh seeds) --
 clipping and basis expansion do not combine.
+
+**Two leads left on the table, both unconfirmed.** (i) `GP-Matern32` is the best France
+model in the sweep -- FR rho 0.2149 against ridge's 0.2084, +0.0065 in 11/15 seeds -- and
+splicing it into France while keeping ridge for Germany gives +0.0018 (11/15). Paired with
+the Germany side of section 5a that suggests a GP-Matern32-FR / KRR-DE hybrid, which was
+not pre-registered and so is not claimed here. (ii) `kNN-std-dist` is the second-best
+France model (+0.0083 FR, 12/15) despite being 0.038 below ridge overall, which is the
+France half of the same story: France's 3-feature problem is small enough for a local
+method, Germany's 29-feature one is not.
 
 **Caveats.** (a) The tree/boosting rows are *fixed* configurations scored directly on the
 outer CV, so they are optimistic; they lost anyway. (b) The blend weights in section 3 are
