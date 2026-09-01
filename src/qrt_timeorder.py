@@ -15,10 +15,20 @@ The internal consistency is what makes this certain rather than suggestive: phys
 *levels* autocorrelate at 0.87-0.98 while commodity *returns* sit near zero, which is
 exactly how real daily data behaves and is not something a shuffle can fake.
 
-THE EXACT MAPPING. `t = ID % 1216` is a bijection onto the 1216 days:
-  ID    0..1215  -> one row per day in chronological order (932 DE, 284 FR-only)
-  ID 1216..2147  -> the FR twin of day (ID - 1216); twin features are bit-identical
+THE EXACT MAPPING. `ID` is two stacked blocks over one chronological index:
+  FR rows: ID 932..2147  ->  POSITION = ID - 932        (all 1216 days)
+  DE rows: ID   0.. 931  ->  POSITION = ID + 284        (a DE row exists iff POSITION >= 284)
+so a day's twin rows differ by exactly 1216, and twin features are bit-identical.
 Train and test days are interleaved in time, so every test day sits among labelled days.
+
+`ID % 1216` also orders the days, but only up to a CYCLIC ROTATION: it sends the first 284
+days to the end, creating one false adjacency at the join. 1215 of 1216 adjacencies survive,
+so it still scores well, but rolling windows straddling the seam are wrong -- under it the
+largest 1-step jump in FR_NUCLEAR is 6.39 against 3.82 under the correct order (median 0.08).
+
+POSITION 1215 (DAY_ID 190, a test row) is a partial/corrupt final day: it sits at the global
+minimum of several unrelated columns at once and its total 1-step change is 59.3 against a
+median of 13.1. Its difference features are an artefact; `clip_outliers` handles it.
 
 PROVENANCE. This is the "leak" the challenge winner describes in the Collège de France
 seminar of 31 Jan 2024 (notes/winner_talk.md). He reached 0.32 without it via cluster-based
@@ -39,12 +49,15 @@ N_DAYS = 1216
 
 
 def day_index(df):
-    """True chronological day index recovered from ID."""
-    return df.ID % N_DAYS
+    """True chronological day POSITION (0..1215) recovered from ID.
+
+    FR rows carry ID 932..2147, DE rows ID 0..931, over one shared chronological index.
+    """
+    return np.where(df.COUNTRY.values == "FR", df.ID.values - 932, df.ID.values + 284)
 
 
 def add_time_features(train, test, feature_cols, lags=(1, 2), windows=(7, 30),
-                      include_lagged_levels=False):
+                      include_lagged_levels=False, clip_outliers=8.0):
     """Return (train, test) with ID-ordering features appended.
 
     For each country's series, ordered by the recovered day index:
@@ -82,6 +95,14 @@ def add_time_features(train, test, feature_cols, lags=(1, 2), windows=(7, 30),
 
     derived = pd.concat(pieces, ignore_index=True)
     new_cols = [c for c in derived.columns if c not in both.columns]
+
+    if clip_outliers:
+        # POSITION 1215 is a corrupt final day whose differences are a ~60-sigma artefact.
+        # Clip in units of each column's own sd rather than dropping the row: it is a test
+        # day, so it must still receive a prediction.
+        d = derived[new_cols]
+        lim = clip_outliers * d.std()
+        derived[new_cols] = d.clip(-lim, lim, axis=1)
 
     keep = ["ID"] + new_cols
     return (train.merge(derived[keep], on="ID", how="left"),

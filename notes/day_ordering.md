@@ -240,3 +240,42 @@ A["POSITION"] = np.where(A.COUNTRY == "FR", A.ID - 932, A.ID + 284)   # 0..1215,
 ```
 
 `notes/day_order.csv` is the same thing precomputed at day level.
+
+---
+
+## 7. Two practical corrections
+
+### 7a. `ID % 1216` is off by a cyclic rotation
+
+`src/qrt_timeorder.py` (written in parallel) uses `day_index = ID % 1216`. That equals
+`(POSITION - 284) mod 1216`: it is the *same* sequence rotated, and it places the first 284 days
+(the ones with no German row) at the **end** instead of the beginning. Verified:
+`max |ID%1216 - (POSITION-284)%1216| = 0`.
+
+The rotation is not free to choose, and three independent facts pin it:
+
+| check | `POSITION` (correct) | `ID % 1216` |
+|---|---|---|
+| DE_NUCLEAR 41-day rolling max, every 100 steps | 0.85 0.74 0.86 0.84 0.77 0.18 0.03 0.22 0.13 0.14 -0.44 **-1.86** -1.85 — monotone down, matching real reactor closures | 0.84 0.72 0.68 0.08 0.13 0.22 0.11 0.08 -1.90 -1.83 **0.80 0.67 0.86** — German nuclear capacity *rises* at the end, impossible |
+| DE_SOLAR max per 200-day chunk | 1.86 1.87 2.28 2.03 2.68 2.81 — PV capacity growth | 1.87 2.28 2.68 2.32 2.81 1.86 1.29 — growth then collapse |
+| missingness ladder | nested prefix at positions 0–33 / 0–93 / 0–170 / 0–283: series coming online | nested block at the very end: four series and the German contract all going offline together |
+| largest 1-step jump in FR_NUCLEAR | 3.82 (the partial final day, §7b) | **6.39 at step 931** — a 4.9-year discontinuity in the middle |
+
+Practically the difference is small for pure first-difference features (one bad adjacency out of
+1215), but any trailing-window statistic straddling the artificial seam at index 931 is wrong,
+and the 284-day block ends up with the wrong long-run context. Use `ID_FR - 932` /
+`ID_DE + 284`.
+
+### 7b. The last day is a partial/corrupt observation
+
+`POSITION = 1215` (`DAY_ID = 190`, `ID_FR = 2147`, `ID_DE = 931`, **test split**) sits at or near
+the sample minimum in essentially every column simultaneously:
+FR_NUCLEAR -5.15, DE_CONSUMPTION -7.43, FR_CONSUMPTION -4.59, FR_RESIDUAL_LOAD -3.98,
+DE_LIGNITE -3.48, DE_NUCLEAR -3.75 — all of them the global minimum of their column. Its total
+1-step z-change from the previous day is 66.6 versus a median of 13.1 and a next-largest of 43.5.
+
+That is the signature of a truncated final day in the data extraction (every daily aggregate is
+a partial sum), not of a real market day. Its Δ-features are meaningless and its own level
+features are misleading. Because it is a test row it cannot simply be dropped — predict it from
+`t = 1214` context, or clip/winsorise it, rather than letting a Δ-based model see a 60-sigma move.
+The start of the series (positions 0–6) shows no such anomaly.

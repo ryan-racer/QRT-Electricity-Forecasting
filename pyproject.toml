@@ -5,6 +5,7 @@ description = "QRT ENS electricity price challenge materials and benchmark"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "catboost>=1.2.10",
     "ipykernel>=7.1.0",
     "jax>=0.11.1",
     "matplotlib>=3.10.0",
@@ -18,6 +19,7 @@ dependencies = [
     "statsmodels>=0.15.0",
     "tabfm[jax]>=1.0.1",
     "tabpfn>=8.5.0",
+    "xgboost>=3.4.1",
 ]
 
 [dependency-groups]
