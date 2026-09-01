@@ -1,15 +1,29 @@
 [project]
 name = "electricity-forcasting"
 version = "0.1.0"
-description = "LightGBM solution for the QRT electricity price challenge"
+description = "QRT ENS electricity price challenge materials and benchmark"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "catboost>=1.2.10",
     "ipykernel>=7.1.0",
-    "lightgbm>=4.6.0",
-    "nbformat>=5.10.4",
+    "jax>=0.11.1",
+    "matplotlib>=3.10.0",
     "numpy>=2.4.0",
+    "optax>=0.2.8",
     "pandas>=3.0.0",
+    "pyarrow>=25.0.1",
     "scikit-learn>=1.9.0",
     "scipy>=1.17.0",
+    "seaborn>=0.13.2",
+    "statsmodels>=0.15.0",
+    "tabfm[jax]>=1.0.1",
+    "tabpfn>=8.5.0",
+    "xgboost>=3.4.1",
+]
+
+[dependency-groups]
+dev = [
+    "nbconvert>=7.17.1",
+    "nbformat>=5.11.1",
 ]

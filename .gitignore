@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Derived data (rebuild with notebooks/data_prep.ipynb)
+data/processed/
