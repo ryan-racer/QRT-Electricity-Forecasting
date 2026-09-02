@@ -42,6 +42,46 @@ Almost all of the score came from understanding the data rather than from model 
 
 The France restriction is a smaller version of the same lesson. A permutation test at 5% family-wise error passes 9 of 29 features for Germany but only 3 for France, and France with all 29 overfits badly. So France gets `FR_WINDPOW`, `GAS_RET`, `CARBON_RET` and the derived features; Germany gets everything.
 
+## The final model
+
+Everything above assembled. This is exactly what `src/make_submission.py` runs.
+
+**Features.** Along the recovered day ordering, per country:
+
+| group | construction | FR | DE |
+|---|---|---|---|
+| base | the raw columns after dropping 3 exact sign-flips | 3 | 29 |
+| time | lag-1 difference and deviation from the 7-day trailing mean, for all 29 base columns | 58 | 58 |
+| cumulative returns | trailing 5- and 20-day sums of `GAS_RET`, `COAL_RET`, `CARBON_RET` | 6 | — |
+| neighbour targets | weighted mean, mean absolute value, std, gap, and before/after means of the 3 nearest training days' targets | 6 | 6 |
+| | **total** | **73** | **93** |
+
+Trailing windows use `shift(1)`, so a day never enters its own window. Neighbour features only ever draw on training-set targets, and a day is never its own neighbour.
+
+**Target.** Rank-transformed to (0, 1] before fitting, separately per country.
+
+**Models.** Three, all fit on the rank target with median imputation:
+
+| model | scope | settings |
+|---|---|---|
+| RidgeCV | per country | alpha chosen by leave-one-out over `logspace(-2, 4, 40)` |
+| LightGBM | per country | `num_leaves=4, n_estimators=400, learning_rate=0.05, min_child_samples=20, reg_lambda=1.0, subsample=0.8, colsample_bytree=0.7` |
+| CatBoost | one model on both countries, with a country indicator | `depth=6, iterations=400, learning_rate=0.05, l2_leaf_reg=6` |
+
+The pooled CatBoost is weaker alone (0.546 against 0.568 for the per-country blend) but its out-of-fold predictions correlate with ridge at only 0.84, so it adds a different view.
+
+**Blend.** Each model's predictions are z-scored over the full test set, then combined as
+
+```
+0.8 × (0.7 × ridge + 0.3 × lightgbm) + 0.2 × catboost   =   0.56 / 0.24 / 0.20
+```
+
+Every LightGBM weight from 0.2 to 0.4 won on 20 of 20 seeds, and CatBoost at 0.1 or 0.2 won on 15 of 16; the values used sit in the middle of those plateaus rather than at the peaks.
+
+**Post-processing.** France's predictions are shrunk toward their own mean by a factor of 0.5. Germany's are left alone.
+
+**Validation.** 5-fold cross-validation grouped on `DAY_ID` so a day's two rows never straddle a split, with the group-to-fold assignment randomised over 16 to 20 seeds. Scored as one pooled Spearman over all out-of-fold predictions, the same quantity the leaderboard computes. Each component was compared against the previous best on identical fold assignments and kept only if it won on nearly every seed.
+
 ## What didn't work
 
 Recorded so I don't retry them. FR−DE spread features, seasonal phase terms recovered from solar, calendar features (day-of-week, annual phase) built from the recovered ordering, missing-value indicators, row deletion, feature standardisation, feature rank transforms, gaussianised targets, sample weighting, robust losses, ElasticNet, partial pooling across countries, second differences, lagged levels, rolling feature volatility, EWMA deviations, longer cumulative windows, and every fitted stack, gate or weight optimiser. A per-row oracle choosing between ridge and LightGBM would score 0.68, and about half of that is stable structure, but a gate to learn it gets chance accuracy: the two models' errors correlate at 0.61, so knowing where one struggles tells you nothing about which to trust.
