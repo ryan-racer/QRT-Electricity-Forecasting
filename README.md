@@ -4,7 +4,6 @@
 
 ![Spearman](https://img.shields.io/badge/Spearman-0.5658-2ea44f?style=flat-square)
 ![Rank](https://img.shields.io/badge/rank-6%20%2F%201157-1f6feb?style=flat-square)
-![Benchmark](https://img.shields.io/badge/benchmark-0.1587-lightgrey?style=flat-square)
 ![Python](https://img.shields.io/badge/python-3.14-3776ab?style=flat-square)
 
 Nearly all of the score came from understanding the data rather than from picking models. The single largest step was noticing that the `ID` column, unlike `DAY_ID`, was never shuffled.
@@ -25,7 +24,6 @@ The output is byte-identical to the submitted file. Runs in about 15 seconds on 
 Pooled out-of-fold Spearman, day-grouped 5-fold, 15–20 randomised seeds. Each step was kept only if it beat the previous one on nearly every seed, compared on identical folds.
 
 ```
-benchmark  (pooled OLS)        0.194  █████████████████
 model each country separately  0.236  █████████████████████
 rank-transform the target      0.290  █████████████████████████
 recover the day ordering (ID)  0.524  ██████████████████████████████████████████████
@@ -138,10 +136,8 @@ src/
 notebooks/
   eda.ipynb               exploratory analysis: findings 2 and 3, and the validation harness
   data_prep.ipynb         preprocessing decisions, each one measured
-  benchmark_qrt_en.ipynb  the organisers' benchmark, unchanged
 submissions/
   blend3_final.csv        the submitted file
-  benchmark_qrt.csv       the benchmark output, for reference
 data/raw/                 the four challenge CSVs
 docs/challenge.md         the challenge statement
 ```
