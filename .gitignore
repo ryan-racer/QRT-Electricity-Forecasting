@@ -11,3 +11,10 @@ wheels/
 
 # Derived data (rebuild with notebooks/data_prep.ipynb)
 data/processed/
+.gstack/
+
+# Local tooling / scratch
+.claude/
+.agents/
+.DS_Store
+experiments/

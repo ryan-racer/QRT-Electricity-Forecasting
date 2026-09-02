@@ -1,131 +1,81 @@
-# Electricity Forecasting Challenge
+# QRT Electricity Price Challenge
 
-This repository contains the QRT ENS electricity price challenge materials, data, and benchmark notebook.
+My solution to the [QRT / ENS "Can you explain the price of electricity?"](https://challengedata.ens.fr/challenges/97) data challenge.
 
-## Project Structure
+**Final public score: 0.5658 Spearman, rank 6 / 1157.** The provided benchmark scores 0.1587.
 
-- `data/raw/`: original challenge CSV files
-- `docs/`: converted challenge statement and notes
-- `notebooks/`: exploratory and benchmark notebooks
-- `submissions/`: generated submission files
+The task: explain the daily change in 24h baseload electricity futures for France and Germany from same-day weather, generation, consumption and commodity data. The metric is Spearman rank correlation over the pooled test set.
 
-## Files
+## How the score was built
 
-- `docs/challenge.md`: Markdown version of the original challenge PDF
-- `notebooks/benchmark_qrt_en.ipynb`: benchmark notebook updated to use the local folder structure
-- `notebooks/eda.ipynb`: exploratory data analysis — structure, target, missingness, feature/target association, and CV baselines
-- `notebooks/data_prep.ipynb`: builds model-ready artifacts from the EDA findings
-- `src/qrt_prep.py`: shared loading, validation, fold-safe transforms, CV harness and scoring
-- `data/processed/`: `train.parquet`, `test.parquet`, `manifest.json`
-- `data/raw/X_train.csv`: training input data
-- `data/raw/y_train.csv`: training target data
-- `data/raw/X_test_final.csv`: test input data
-- `data/raw/y_test_random_final.csv`: random submission example
+Every step below was measured with paired comparisons on identical fold assignments (randomised, day-grouped 5-fold, 15 to 20 seeds), and only kept if it won on nearly every seed. Pooled out-of-fold Spearman:
 
-## Running the Benchmark
-
-Run `uv sync`, then open `notebooks/benchmark_qrt_en.ipynb` and run the cells. The notebook reads data from `../data/raw/` and writes the benchmark submission to `../submissions/benchmark_qrt.csv`.
-
-## EDA
-
-`notebooks/eda.ipynb` — structure, target, missingness, feature space, signal, then modelling under a
-grouped CV harness.
-
-| model | pooled OOF Spearman |
-|---|---|
-| benchmark (pooled OLS, `COUNTRY` dropped) | 0.1937 |
-| per-country ridge, 29 features | 0.2356 ± 0.0094 |
-| + FR feature selection (3 features) | 0.2577 ± 0.0115 |
-| + rank-transformed target | 0.2896 ± 0.0074 |
-| + TabPFN v3 blend | 0.3005 ± 0.0067 |
-| + ID time-ordering features | 0.5238 ± 0.0056 |
-| + cumulative commodity returns (FR) | 0.5460 ± 0.0056 |
-| + neighbour-target features (k=3) | 0.5523 ± 0.0070 |
-| + FR prediction-spread shrink (α=0.5) | 0.5582 ± 0.0068 |
-| **+ 30% LightGBM blend** | **0.5685 ± 0.0045** |
-
-Main findings:
-
-- A day's FR and DE rows are **bit-identical across all 32 features**; only `COUNTRY` and the target differ.
-  The benchmark drops `COUNTRY`, so it cannot separate them.
-- **`DAY_ID` is a decoy shuffle, but `ID` encodes true calendar order.** `t = ID % 1216` is an exact
-  bijection onto the 1216 days (`ID 0..1215` chronological, `ID 1216..2147` the FR twin of `ID-1216`).
-  Sorted by `ID`, `FR_NUCLEAR` autocorrelates at 0.980 and `FR_CONSUMPTION` at 0.965, against ~0.00
-  under `DAY_ID`. Commodity *returns* stay near zero while *levels* do not — exactly as real data
-  behaves. First differences and deviations from trailing means take CV from 0.289 to **0.524**.
-- Season is recoverable from solar but carries no target signal.
-- 6–8 days carry ~31% of the squared-error weight and ~1% of the rank positions, so least squares optimises
-  the wrong thing. Rank-transforming the target is the single biggest win.
-- Against a family-wise permutation null, DE gets 9 of 29 features through and FR only 3. France overfits
-  badly on the full set; cutting it to 3 features more than triples FR within-country score.
-- Everything that added capacity lost: FR−DE spreads, seasonal terms, gradient boosting, volatility scaling.
-
-Run with the project venv (`uv sync`), selecting the `.venv` kernel in your editor.
-
-## Data prep
-
-`notebooks/data_prep.ipynb` turns the raw CSVs into `data/processed/`, encoding the EDA findings. Design
-rule: anything *fitted* must be fittable inside a CV fold, so the saved data keeps its NaNs and the
-transforms live in `src/qrt_prep.py` rather than being baked in.
-
-```python
-import sys; sys.path.insert(0, "src")
-import qrt_prep as P
-
-train, test, manifest = P.load_processed()
-P.validate(train, test)                       # re-asserts every EDA invariant
-folds = P.make_folds(train.DAY_ID, seed=0)    # grouped on DAY_ID, randomised
-mean, sd, oof = P.cross_validate(train, fit_predict)
-```
-
-Settled by measurement, not convention: fold-median imputation (all options within noise),
-rank-transformed target (+0.04, the main win), and permutation-null feature selection applied
-**inside the fold**.
-
-That last point corrects the EDA: selecting France's features once on the full training set inflated
-its CV estimate by ~0.008. Honest reference is **0.2806 ± 0.0066** pooled OOF Spearman, not 0.2896.
-The model itself was fine — only the self-assessment was contaminated.
-
-## Final recipe
-
-`submissions/blend_final.csv`. All numbers are pooled out-of-fold Spearman over 20 randomised
-day-grouped fold seeds, compared **paired** on identical fold assignments.
-
-```python
-import sys; sys.path.insert(0, "src")
-import qrt_prep as P, qrt_timeorder as TO, qrt_temporal as TT
-
-train, test = P.build_frames()                       # drops 3 exact sign-flip columns
-F = P.feature_columns(train)                         # 29 base features
-tr, te, NEW = TO.add_time_features(train, test, F, lags=(1,), windows=(7,))
-tr, te, CUM = TO.add_cumulative_returns(tr, te, windows=(5, 20))
-# FR: 3 selected base + time + cumulative returns.  DE: all 29 base + time.
-# Both: k=3 neighbour-target features, rank-transformed target.
-# Predict, z-score, blend 0.7*ridge + 0.3*LightGBM, then shrink FR spread by 0.5.
-```
-
-Each component, and why:
-
-| component | effect | reason |
+| step | CV | what it is |
 |---|---|---|
-| per-country models | +0.034 | a day's FR and DE rows are bit-identical apart from `COUNTRY` |
-| rank-transformed target | +0.040 | 8 days carry 31% of squared-error weight and 1% of rank positions |
-| `ID` time ordering | +0.234 | `ID` encodes true calendar order; the target is a price *change* |
-| cumulative commodity returns (FR) | +0.022 | France is priced off fuel-cost *levels*, not daily changes |
-| neighbour targets, k=3 | +0.006 | DE target mean-reverts (lag-1 −0.211) and its volatility clusters |
-| FR spread shrink, α=0.5 | +0.006 | DE within-country is 0.767 vs FR 0.233; let DE own the pooled extremes |
-| 30% LightGBM blend | +0.010 | OOF correlation 0.841 with ridge — diversity, not raw strength |
+| benchmark (pooled OLS, no country) | 0.194 | as provided |
+| per-country models | 0.236 | see discovery 1 |
+| rank-transform the target | 0.290 | see discovery 2 |
+| **recover the true day ordering from `ID`** | **0.524** | see discovery 3 |
+| cumulative commodity returns for France | 0.546 | see discovery 4 |
+| neighbouring days' targets | 0.552 | Germany mean-reverts (lag-1 −0.21) |
+| shrink France's prediction spread | 0.558 | see discovery 5 |
+| LightGBM in the blend | 0.569 | see discovery 6 |
+| pooled CatBoost in the blend | **0.572** | diversity member, OOF corr 0.84 with ridge |
 
-### Tested and rejected
+Final CV 0.5716 ± 0.0050. Public leaderboard 0.5658, so the harness was well calibrated.
 
-Recorded so they are not retried: FR−DE spreads, seasonal/winter-ness terms, missing-value
-indicators, row deletion, feature standardisation and centering, feature rank transforms,
-gaussianised targets, ElasticNet, partial pooling, sample weighting, robust losses, a
-differentiable soft-Spearman objective in JAX, rolling feature volatility, EWMA deviations,
-calendar features built from the recovered position, and every *fitted* stack, gate or
-weight-optimiser (all lose to a fixed blend).
+## The discoveries
 
-Two rules that were true early and later became false, both worth remembering:
-**"no time structure exists"** (true of `DAY_ID`, false of `ID`) and **"added capacity always
-loses"** (true at 29 weak features, false once the time features exist — LightGBM flips from
-−0.0125 to +0.0232).
+Almost all of the score came from understanding the data rather than from model choice. In rough order of importance:
+
+**3. The `ID` column encodes calendar order.** `DAY_ID` is genuinely shuffled, and I initially concluded from that that no time structure existed. But `ID` is not shuffled. Sorted by `ID`, French nuclear output autocorrelates at 0.980 and consumption at 0.965, against ~0.00 under `DAY_ID`. The tell that it's real time rather than an artifact: physical *levels* autocorrelate at 0.87–0.98 while commodity *returns* sit near zero, which is exactly how real daily data behaves. The exact mapping is two stacked blocks over one chronological index: France is `ID − 932`, Germany is `ID + 284`, and a day's two rows differ by exactly 1216. The organisers acknowledged this in their winners' seminar. The target is a price *change*, so first differences of the fundamentals along that ordering are what actually drive it: the lag-1 change in German residual load alone correlates 0.76 with the German target, against 0.32 for the best level. This one step took CV from 0.29 to 0.52.
+
+**1. A day's French and German rows are bit-identical.** All 32 feature columns match exactly between the FR and DE row of the same day; only `COUNTRY` and the target differ, and the two targets correlate at just 0.12. A model without country can't tell them apart, which is why the benchmark is capped where it is. Everything is modelled per country.
+
+**2. Least squares fights the metric.** The top 1% of days by |target| carry 31% of the squared-error weight but 1% of the rank positions. Rank-transforming the target before fitting is worth +0.04 and costs nothing, since Spearman only sees ranks.
+
+**4. France is priced off levels, Germany off changes.** With time features Germany reached 0.77 within-country while France sat at 0.23, and nothing moved it. The reason is physical: France is nuclear-heavy, so its marginal price is set by the fuel cost of the marginal thermal unit, which is a *level*. The commodity columns are already daily returns, so differencing them is a second difference of the wrong thing. Summing them instead (trailing 5- and 20-day cumulative returns) reconstructs the level move, and lifts France from 0.23 to 0.28. `CARBON_RET_cum5` is the strongest single French feature in the whole dataset.
+
+**5. The two countries should not be on the same scale.** The metric ranks FR and DE in one pool, and Germany is far better predicted. Compressing France's predictions toward their own mean by half lets the reliable German predictions occupy the extremes of the pooled ranking. This is the opposite of normalising the two countries onto a common scale, which loses badly (−0.048).
+
+**6. "Added capacity always loses" was true, then false.** Under the original 29 features, every flexible model lost to ridge: gradient boosting scored 0.21 against 0.29, and a differentiable soft-Spearman objective did no better. I took that as a property of the dataset. It was a property of the signal-to-noise ratio. Once the time features existed, the byte-identical LightGBM config flipped from −0.013 to +0.023 against ridge. Fine-tuning a tabular foundation model showed the same split: it helped Germany and hurt France.
+
+The France restriction is a smaller version of the same lesson. A permutation test at 5% family-wise error passes 9 of 29 features for Germany but only 3 for France, and France with all 29 overfits badly. So France gets `FR_WINDPOW`, `GAS_RET`, `CARBON_RET` and the derived features; Germany gets everything.
+
+## What didn't work
+
+Recorded so I don't retry them. FR−DE spread features, seasonal phase terms recovered from solar, calendar features (day-of-week, annual phase) built from the recovered ordering, missing-value indicators, row deletion, feature standardisation, feature rank transforms, gaussianised targets, sample weighting, robust losses, ElasticNet, partial pooling across countries, second differences, lagged levels, rolling feature volatility, EWMA deviations, longer cumulative windows, and every fitted stack, gate or weight optimiser. A per-row oracle choosing between ridge and LightGBM would score 0.68, and about half of that is stable structure, but a gate to learn it gets chance accuracy: the two models' errors correlate at 0.61, so knowing where one struggles tells you nothing about which to trust.
+
+Time-series foundation models have nothing to find here either. With the ordering recovered, the target's own autocorrelation is two lags of mild mean reversion in Germany and nothing in France, which the neighbour-target features already capture.
+
+## Reproduce it
+
+```bash
+uv sync
+uv run python src/make_submission.py      # writes submissions/blend3_final.csv
+```
+
+Runs in under a minute on CPU. The output is byte-identical to the submitted file.
+
+The exploratory work is in two notebooks. `notebooks/eda.ipynb` establishes discoveries 1 and 2 and the validation harness; `notebooks/data_prep.ipynb` settles preprocessing choices by measurement. Note that the EDA notebook's section 1.3 concludes no time structure exists, which was correct about `DAY_ID` and wrong about the dataset; discovery 3 came later, and I've left the original reasoning in place with a note rather than rewriting it.
+
+## Layout
+
+```
+data/raw/               the four challenge CSVs
+docs/challenge.md       the challenge statement
+notebooks/
+  eda.ipynb             exploratory analysis
+  data_prep.ipynb       preprocessing decisions, each measured
+  benchmark_qrt_en.ipynb  the organisers' benchmark, unchanged
+src/
+  qrt_prep.py           loading, validation, randomised grouped folds, scoring
+  qrt_timeorder.py      the ID ordering, difference and cumulative-return features
+  qrt_temporal.py       neighbouring-day target features, with a leakage guard
+  make_submission.py    the full pipeline, end to end
+submissions/
+  blend3_final.csv      the submitted file
+  benchmark_qrt.csv     the benchmark, for reference
+```
+
+Python 3.14, managed with `uv`. Main dependencies: pandas, scikit-learn, LightGBM, CatBoost, JAX (used for the permutation-null feature selection in the EDA).
