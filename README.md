@@ -136,8 +136,7 @@ src/
 notebooks/
   eda.ipynb               exploratory analysis: findings 2 and 3, and the validation harness
   data_prep.ipynb         preprocessing decisions, each one measured
-submissions/
-  blend3_final.csv        the submitted file
+submissions/              make_submission.py writes blend3_final.csv here (not tracked)
 data/raw/                 the four challenge CSVs
 docs/challenge.md         the challenge statement
 ```

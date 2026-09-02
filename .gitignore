@@ -18,3 +18,6 @@ data/processed/
 .agents/
 .DS_Store
 experiments/
+
+# Generated submissions (rebuild with src/make_submission.py)
+submissions/*.csv
